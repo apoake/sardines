@@ -3,12 +3,20 @@ package sardines
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
+)
+
+const (
+	ONE               int    = 1
+	onePoolStopSignal Signal = -1
 )
 
 var (
 	ErrWorkerTimeOut = errors.New("worker timeout")
 )
+
+type Signal int
 
 type innerResult struct {
 	res interface{}
@@ -57,10 +65,17 @@ type taskContext struct {
 type Worker interface {
 	close()
 	run()
+	workNo() string
 }
 
-func NewLoopWork(reqChan <-chan interface{}) *loopWork {
-	lw := &loopWork{reqChain: reqChan, closeChain: make(chan struct{})}
+func NewLoopWork(reqChan <-chan interface{}, workerNo string) *loopWork {
+	lw := &loopWork{reqChain: reqChan, closeChain: make(chan struct{}), workerNo: workerNo}
+	go lw.run()
+	return lw
+}
+
+func NewOneLoopWork(reqChan <-chan interface{}, wg sync.WaitGroup, workerNo string) *oneLoopWork {
+	lw := &oneLoopWork{loopWork: loopWork{reqChain: reqChan, closeChain: make(chan struct{}), workerNo: workerNo}, wg: wg}
 	go lw.run()
 	return lw
 }
@@ -68,6 +83,16 @@ func NewLoopWork(reqChan <-chan interface{}) *loopWork {
 type loopWork struct {
 	reqChain   <-chan interface{}
 	closeChain chan struct{}
+	workerNo   string
+}
+
+func (l *loopWork) workNo() string {
+	return l.workerNo
+}
+
+type oneLoopWork struct {
+	loopWork
+	wg sync.WaitGroup
 }
 
 func (l *loopWork) close() {
@@ -93,6 +118,31 @@ func (l *loopWork) run() {
 			}
 		case <-l.closeChain:
 			return
+		}
+	}
+}
+
+func (o *oneLoopWork) close() {}
+
+func (o *oneLoopWork) run() {
+	o.wg.Add(ONE)
+	defer o.close()
+	for {
+		select {
+		case context := <-o.reqChain:
+			switch sContext := context.(type) {
+			case Run:
+				sContext()
+			case Signal:
+				if sContext == onePoolStopSignal {
+					o.wg.Done()
+					return
+				} else {
+					fmt.Printf("unknow signal: %v\n", sContext)
+				}
+			default:
+				fmt.Printf("unknow type[%T]: %v\n", sContext, sContext)
+			}
 		}
 	}
 }
