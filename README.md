@@ -32,6 +32,20 @@ result, _ := p.SummitTask(f2)
 //超过2秒不返回结果，能获取到超时异常
 data, err = result.GetTimed(2 * time.Second)    
 
+
+///////////////////////////////////////////////
+
+//使用一次并发任务，等待所有任务结束退出
+p, _ := NewOneFixSizePools(80)
+var index int64 = 0
+for i := 0; i < 100; i++ {
+  p.Summit(func() {
+    time.Sleep(2 * time.Second)
+     fmt.Println(atomic.AddInt64(&index, 1))
+  })
+}
+p.Wait()
+
 ````
 
 
