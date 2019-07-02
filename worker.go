@@ -2,6 +2,7 @@ package sardines
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -44,20 +45,54 @@ func (r *Result) GetTimed(d time.Duration) (interface{}, error) {
 	return r.iResult.res, r.iResult.err
 }
 
-type worker interface {
-	Close()
-	Run()
+type Run func()
+
+type Task func() (interface{}, error)
+
+type taskContext struct {
+	task     Task
+	resqChan chan<- innerResult
+}
+
+type Worker interface {
+	close()
+	run()
+}
+
+func NewLoopWork(reqChan <-chan interface{}) *loopWork {
+	lw := &loopWork{reqChain: reqChan, closeChain: make(chan struct{})}
+	go lw.run()
+	return lw
 }
 
 type loopWork struct {
-	reqChain   chan<- interface{}
-	closeChain chan<- struct{}
+	reqChain   <-chan interface{}
+	closeChain chan struct{}
 }
 
-func (w *loopWork) Close() {
-	w.closeChain <-
+func (l *loopWork) close() {
+	close(l.closeChain)
 }
 
-func (*loopWork) Run() {
-	panic("implement me")
+func (l *loopWork) run() {
+	defer func() {
+		l.close()
+	}()
+	for {
+		select {
+		case context := <-l.reqChain:
+			switch sContext := context.(type) {
+			case Run:
+				sContext()
+			case taskContext:
+				result, err := sContext.task()
+				sContext.resqChan <- innerResult{res: result, err: err}
+				close(sContext.resqChan)
+			default:
+				fmt.Println("unknow type: ", sContext)
+			}
+		case <-l.closeChain:
+			return
+		}
+	}
 }
