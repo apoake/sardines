@@ -18,9 +18,11 @@ func TestPool(t *testing.T) {
 		})
 	}
 
-	result, _ := p.SummitTask(func() (interface{}, error) {
+	f1 := func() (interface{}, error) {
+		//Something todo
 		return 1, nil
-	})
+	}
+	result, _ := p.SummitTask(f1)
 	data, err := result.Get()
 	fmt.Printf("%v, %v\n", data, err)
 	startTime := time.Now()
