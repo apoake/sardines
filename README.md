@@ -3,7 +3,7 @@
 
 ## 安装
 ```` sh 
-github.com/apoake/sardines
+go get github.com/apoake/sardines
 ````
 
 ## 使用
